@@ -117,6 +117,16 @@ export async function getPortfolioPerformance(monthValue?: string) {
     const yoyBase = resolveMonthlyMetrics(project.monthlyMetrics.filter((row) => monthKey(row.month) === monthKey(previousYear)));
     const latestRanks = project.keywords.map((keyword) => latestRankForKeyword(keyword.rankings)).filter(Boolean);
     const knownRanks = latestRanks.filter((rank) => rank?.position !== null && !rank?.beyondRange);
+    const movements = project.keywords.map((keyword) => {
+      const sorted = [...keyword.rankings].sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime());
+      const current = latestRankForKeyword(sorted);
+      if (!current || current.position === null) return null;
+      const previous = sorted.find((rank) => rank.device === current.device && rank.checkedAt < current.checkedAt);
+      if (!previous || previous.position === null) return null;
+      return previous.position - current.position;
+    });
+    const improved = movements.filter((value): value is number => value !== null && value > 0).length;
+    const declined = movements.filter((value): value is number => value !== null && value < 0).length;
     const latestRankDate = latestRanks.reduce<Date | null>((latest, rank) => {
       if (!rank) return latest;
       return !latest || rank.checkedAt > latest ? rank.checkedAt : latest;
@@ -135,6 +145,8 @@ export async function getPortfolioPerformance(monthValue?: string) {
       top3: knownRanks.filter((rank) => (rank?.position ?? 999) <= 3).length,
       top10: knownRanks.filter((rank) => (rank?.position ?? 999) <= 10).length,
       top20: knownRanks.filter((rank) => (rank?.position ?? 999) <= 20).length,
+      improved,
+      declined,
       sessions: current.organicSessions,
       conversions: current.conversions,
       sessionsMom: calculatePercentChange(current.organicSessions, momBase.organicSessions),
@@ -200,9 +212,58 @@ export async function getPerformanceProject(projectId: string) {
     const current = rankings[0] ?? null;
     const previous = rankings.find((rank) => rank.device === current?.device && rank.checkedAt < (current?.checkedAt ?? new Date(0))) ?? null;
     const movement = current?.position != null && previous?.position != null ? previous.position - current.position : null;
+    const history = rankings
+      .filter((rank) => rank.device === current?.device)
+      .slice(0, 8)
+      .reverse()
+      .map((rank) => ({ checkedAt: rank.checkedAt, position: rank.position, beyondRange: rank.beyondRange }));
 
-    return { keyword, current, previous, movement };
+    return { keyword, current, previous, movement, history };
   });
+
+  const movementSummary = rankingRows.reduce(
+    (acc, row) => {
+      const currentRanked = row.current?.position != null && !row.current.beyondRange;
+      const previousRanked = row.previous?.position != null && !row.previous.beyondRange;
+      if (row.movement !== null) {
+        if (row.movement > 0) acc.up += 1;
+        else if (row.movement < 0) acc.down += 1;
+        else acc.stable += 1;
+      } else if (currentRanked && row.previous && !previousRanked) {
+        acc.entered += 1;
+      } else if (!currentRanked && row.current && previousRanked) {
+        acc.lost += 1;
+      }
+      return acc;
+    },
+    { up: 0, down: 0, stable: 0, entered: 0, lost: 0 }
+  );
+
+  const now = new Date();
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const shareOfVoice = Array.from({ length: 6 }, (_, index) => shiftMonth(currentMonthStart, index - 5)).map(
+    (monthDate) => {
+      const key = monthKey(monthDate);
+      let tracked = 0;
+      let top3 = 0;
+      let top10 = 0;
+      for (const keyword of project.keywords) {
+        const latest = latestRankForKeyword(keyword.rankings.filter((rank) => monthKey(rank.checkedAt) === key));
+        if (!latest) continue;
+        tracked += 1;
+        if (latest.position !== null && !latest.beyondRange) {
+          if (latest.position <= 3) top3 += 1;
+          if (latest.position <= 10) top10 += 1;
+        }
+      }
+      return {
+        month: key,
+        tracked,
+        top3Pct: tracked ? (top3 / tracked) * 100 : null,
+        top10Pct: tracked ? (top10 / tracked) * 100 : null
+      };
+    }
+  );
 
   const knownCurrentRanks = rankingRows.filter(
     (row) => row.current != null && row.current.position !== null && !row.current.beyondRange
@@ -220,6 +281,8 @@ export async function getPerformanceProject(projectId: string) {
   return {
     project,
     rankingRows,
+    movementSummary,
+    shareOfVoice,
     timeline,
     rankDistribution: {
       top3: knownCurrentRanks.filter((row) => (row.current?.position ?? 999) <= 3).length,

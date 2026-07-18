@@ -78,6 +78,8 @@ type PortfolioRow = {
   top3: number;
   top10: number;
   top20: number;
+  improved: number;
+  declined: number;
   sessions: number | null;
   conversions: number | null;
   sessionsMom: number | null;
@@ -119,7 +121,15 @@ export function PortfolioTable({ rows }: { rows: PortfolioRow[] }) {
                   <span>Top 10 <strong>{row.top10}</strong></span>
                   <span>Top 20 <strong>{row.top20}</strong></span>
                 </div>
-                <div className="meta-text">{row.rankedCount}/{row.keywordCount} memiliki data</div>
+                <div className="meta-text">
+                  {row.rankedCount}/{row.keywordCount} memiliki data
+                  {row.improved || row.declined ? (
+                    <>
+                      {" · "}
+                      <span className="movement-up">▲ {row.improved}</span> <span className="movement-down">▼ {row.declined}</span>
+                    </>
+                  ) : null}
+                </div>
               </td>
               <td>
                 <div className="metric-cell">
@@ -352,12 +362,14 @@ export function TrendLine({
   title,
   color,
   decimals = 0,
-  timeline
+  timeline,
+  markers = []
 }: {
   title: string;
   color: string;
   decimals?: number;
   timeline: Array<{ month: string; value: number | null }>;
+  markers?: Array<{ month: string; title: string }>;
 }) {
   const known = timeline
     .map((item, index) => ({ ...item, index }))
@@ -397,6 +409,18 @@ export function TrendLine({
             </text>
           </g>
         ))}
+        {markers.map((marker) => {
+          const index = timeline.findIndex((item) => item.month === marker.month);
+          if (index < 0) return null;
+          return (
+            <g key={`${marker.month}-${marker.title}`}>
+              <line x1={x(index)} x2={x(index)} y1={padTop} y2={height - padBottom} stroke="#b45309" strokeOpacity={0.55} strokeDasharray="4 4" />
+              <circle cx={x(index)} cy={padTop} r={4.5} fill="#b45309">
+                <title>{`${formatMonthLabel(marker.month)}: ${marker.title}`}</title>
+              </circle>
+            </g>
+          );
+        })}
         <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         {known.map((item) => (
           <circle key={item.month} cx={x(item.index)} cy={y(item.value)} r={3.5} fill={color}>
@@ -410,6 +434,108 @@ export function TrendLine({
             </text>
           ) : null
         )}
+      </svg>
+    </div>
+  );
+}
+
+export function MovementSummary({ summary }: { summary: { up: number; down: number; stable: number; entered: number; lost: number } }) {
+  const total = summary.up + summary.down + summary.stable + summary.entered + summary.lost;
+  if (!total) return null;
+  return (
+    <div className="movement-summary">
+      <span className="movement-up">▲ {summary.up} naik</span>
+      <span className="movement-down">▼ {summary.down} turun</span>
+      <span className="muted">= {summary.stable} stabil</span>
+      {summary.entered ? <span className="movement-up">✚ {summary.entered} masuk ranking</span> : null}
+      {summary.lost ? <span className="movement-down">✖ {summary.lost} keluar ranking</span> : null}
+    </div>
+  );
+}
+
+export function RankSparkline({ history }: { history: Array<{ position: number | null; beyondRange: boolean }> }) {
+  if (history.length < 2) return <span className="muted">—</span>;
+  // Posisi lebih kecil = lebih baik; nilai tanpa data/101+ dipetakan ke 101.
+  const values = history.map((item) => item.position ?? 101);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(max - min, 1);
+  const width = 110;
+  const height = 30;
+  const pad = 4;
+  const x = (index: number) => pad + (index * (width - 2 * pad)) / (values.length - 1);
+  const y = (value: number) => pad + ((value - min) / range) * (height - 2 * pad);
+  const trend = values[values.length - 1] - values[0];
+  const color = trend < 0 ? "#16a34a" : trend > 0 ? "#dc2626" : "#9ca3af";
+  const points = values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+
+  return (
+    <svg width={width} height={height} role="img" aria-label="Tren posisi keyword">
+      <polyline points={points} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={x(values.length - 1)} cy={y(values[values.length - 1])} r={2.8} fill={color} />
+    </svg>
+  );
+}
+
+export function ShareOfVoiceChart({
+  data
+}: {
+  data: Array<{ month: string; tracked: number; top3Pct: number | null; top10Pct: number | null }>;
+}) {
+  const hasData = data.some((item) => item.tracked > 0);
+  if (!hasData) {
+    return <div className="empty-state">Belum ada data ranking dalam 6 bulan terakhir.</div>;
+  }
+
+  const width = 720;
+  const height = 220;
+  const padLeft = 48;
+  const padRight = 16;
+  const padTop = 16;
+  const padBottom = 36;
+  const x = (index: number) => padLeft + (index * (width - padLeft - padRight)) / Math.max(data.length - 1, 1);
+  const y = (value: number) => padTop + (1 - value / 100) * (height - padTop - padBottom);
+  const series = [
+    { key: "top10Pct" as const, label: "Top 10", color: "#2563eb" },
+    { key: "top3Pct" as const, label: "Top 3", color: "#16a34a" }
+  ];
+
+  return (
+    <div className="trend-line-block">
+      <div className="sov-legend">
+        {series.map((serie) => (
+          <span key={serie.key}><span className="sov-dot" style={{ background: serie.color }} /> {serie.label}</span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Share of voice per bulan" style={{ width: "100%", height: "auto" }}>
+        {[0, 50, 100].map((value) => (
+          <g key={value}>
+            <line x1={padLeft} x2={width - padRight} y1={y(value)} y2={y(value)} stroke="currentColor" strokeOpacity={0.12} />
+            <text x={padLeft - 8} y={y(value) + 4} textAnchor="end" fontSize={11} fill="currentColor" fillOpacity={0.6}>{value}%</text>
+          </g>
+        ))}
+        {series.map((serie) => {
+          const known = data
+            .map((item, index) => ({ value: item[serie.key], tracked: item.tracked, month: item.month, index }))
+            .filter((item): item is { value: number; tracked: number; month: string; index: number } => item.value !== null);
+          if (!known.length) return null;
+          const path = known.map((item, i) => `${i === 0 ? "M" : "L"}${x(item.index).toFixed(1)},${y(item.value).toFixed(1)}`).join(" ");
+          return (
+            <g key={serie.key}>
+              <path d={path} fill="none" stroke={serie.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+              {known.map((item) => (
+                <circle key={item.month} cx={x(item.index)} cy={y(item.value)} r={3.5} fill={serie.color}>
+                  <title>{`${formatMonthLabel(item.month)} · ${serie.label}: ${item.value.toFixed(0)}% dari ${item.tracked} keyword`}</title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+        {data.map((item, index) => (
+          <text key={item.month} x={x(index)} y={height - 10} textAnchor="middle" fontSize={11} fill="currentColor" fillOpacity={0.6}>
+            {formatMonthLabel(item.month).replace(/\s(\d{2})(\d{2})$/, " '$2")}
+          </text>
+        ))}
       </svg>
     </div>
   );

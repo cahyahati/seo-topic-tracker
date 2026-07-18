@@ -5,8 +5,11 @@ import {
   AnnotationForm,
   KeywordForm,
   MonthlyMetricForm,
+  MovementSummary,
   ProjectForm,
   RankDistribution,
+  RankSparkline,
+  ShareOfVoiceChart,
   TrendLine,
   canEdit
 } from "@/components/performance-dashboard";
@@ -34,6 +37,10 @@ export default async function PerformanceProjectPage({
   const data = await getPerformanceProject(id);
   if (!data) notFound();
   const editable = canEdit(user.role);
+  const annotationMarkers = data.project.annotations.map((annotation) => ({
+    month: annotation.eventDate.toISOString().slice(0, 7),
+    title: annotation.title
+  }));
 
   return (
     <div className="stack">
@@ -69,12 +76,14 @@ export default async function PerformanceProjectPage({
             title="Organic sessions"
             color="#2563eb"
             timeline={data.timeline.map((row) => ({ month: row.month, value: row.organicSessions }))}
+            markers={annotationMarkers}
           />
           <TrendLine
             title="Conversions"
             color="#16a34a"
             decimals={2}
             timeline={data.timeline.map((row) => ({ month: row.month, value: row.conversions }))}
+            markers={annotationMarkers}
           />
         </div>
         {data.timeline.length ? (
@@ -94,16 +103,18 @@ export default async function PerformanceProjectPage({
           <div><h2>Keyword & ranking</h2><p className="muted">Posisi terbaru dibandingkan snapshot sebelumnya pada perangkat yang sama.</p></div>
           <span className="freshness-note">{data.project.keywords.length} keyword</span>
         </div>
+        <MovementSummary summary={data.movementSummary} />
         {data.rankingRows.length ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Keyword</th><th>Target URL</th><th>Posisi</th><th>Perubahan</th><th>Lokasi</th><th>Perangkat</th><th>Diperiksa</th>{editable ? <th>Aksi</th> : null}</tr></thead>
-              <tbody>{data.rankingRows.map(({ keyword, current, movement }) => (
+              <thead><tr><th>Keyword</th><th>Target URL</th><th>Posisi</th><th>Perubahan</th><th>Tren</th><th>Lokasi</th><th>Perangkat</th><th>Diperiksa</th>{editable ? <th>Aksi</th> : null}</tr></thead>
+              <tbody>{data.rankingRows.map(({ keyword, current, movement, history }) => (
                 <tr key={keyword.id} className={keyword.isActive ? "" : "row-muted"}>
                   <td><div className="topic-cell"><strong>{keyword.phrase}</strong><span className="meta-text">{keyword.source.replaceAll("_", " ")}{keyword.isActive ? "" : " · nonaktif"}</span></div></td>
                   <td>{keyword.targetUrl ? <span className="target-url">{keyword.targetUrl}</span> : <span className="muted">—</span>}</td>
                   <td><strong className="rank-number">{rankLabel(current?.position, current?.beyondRange)}</strong></td>
                   <td>{movement === null ? "—" : <span className={movement > 0 ? "movement-up" : movement < 0 ? "movement-down" : "muted"}>{movement > 0 ? `▲ ${movement}` : movement < 0 ? `▼ ${Math.abs(movement)}` : "0"}</span>}</td>
+                  <td><RankSparkline history={history} /></td>
                   <td>{keyword.location}<div className="meta-text">{keyword.searchEngine}</div></td>
                   <td>{current?.device ?? "—"}</td>
                   <td>{formatDate(current?.checkedAt)}</td>
@@ -113,6 +124,13 @@ export default async function PerformanceProjectPage({
             </table>
           </div>
         ) : <div className="empty-state">Belum ada keyword untuk project ini.</div>}
+      </section>
+
+      <section className="card">
+        <div className="headline section-heading">
+          <div><h2>Share of voice</h2><p className="muted">Persentase keyword yang berada di Top 3 dan Top 10 dalam 6 bulan terakhir.</p></div>
+        </div>
+        <ShareOfVoiceChart data={data.shareOfVoice} />
       </section>
 
       <div className="grid-2 balanced-grid">
