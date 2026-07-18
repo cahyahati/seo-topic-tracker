@@ -381,16 +381,37 @@ export async function importPerformanceDataAction(formData: FormData) {
     }
   }
 
+  const unaccounted = rows.length - imported - skipped;
+  if (unaccounted > 0) skipped += unaccounted;
+
+  const importStatus =
+    imported === 0
+      ? ImportStatus.FAILED
+      : skipped > 0
+        ? ImportStatus.PARTIAL
+        : ImportStatus.COMPLETED;
+  const importNotes =
+    imported === 0
+      ? "Tidak ada baris yang berhasil disimpan. Periksa jenis import, kolom wajib, dan tanggal ranking."
+      : skipped > 0
+        ? `${skipped} baris dilewati karena data wajib tidak lengkap atau tidak valid.`
+        : null;
+
   await db.dataImport.update({
     where: { id: importLog.id },
     data: {
       rowsImported: imported,
       rowsSkipped: skipped,
-      status: skipped ? ImportStatus.PARTIAL : ImportStatus.COMPLETED
+      status: importStatus,
+      notes: importNotes
     }
   });
 
-  redirectMessage("/performance/import", "success", `${imported} baris berhasil diimport; ${skipped} dilewati.`);
+  redirectMessage(
+    "/performance/import",
+    imported === 0 ? "error" : "success",
+    `${imported} baris berhasil diimport; ${skipped} dilewati.`
+  );
 }
 
 type BrainSnapshot = {
