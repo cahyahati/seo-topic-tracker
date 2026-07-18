@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit", shell: false });
@@ -6,14 +7,19 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
+const prismaCli = fileURLToPath(
+  new URL("../node_modules/prisma/build/index.js", import.meta.url),
+);
+const nextCli = fileURLToPath(
+  new URL("../node_modules/next/dist/bin/next", import.meta.url),
+);
 
 if (process.env.CONTEXT === "production") {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL wajib tersedia untuk menerapkan skema production.");
   }
-  run(npxCommand, ["prisma", "db", "push"]);
+  run(process.execPath, [prismaCli, "db", "push"]);
 }
 
-run(npmCommand, ["run", "build"]);
+run(process.execPath, [prismaCli, "generate"]);
+run(process.execPath, [nextCli, "build"]);
