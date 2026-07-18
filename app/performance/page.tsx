@@ -25,7 +25,7 @@ export default async function PerformancePage({
         <div className="headline">
           <div>
             <span className="eyebrow">SEO portfolio</span>
-            <h1>Performance 15 Project</h1>
+            <h1>Performance {data.totals.projects} Project</h1>
             <p className="muted">Ranking terbaru serta traffic dan conversion untuk {formatMonthLabel(selectedMonth)}.</p>
           </div>
           <div className="actions">

@@ -2,7 +2,7 @@ import { UserRole } from "@prisma/client";
 import Link from "next/link";
 
 import { PasswordForm } from "@/components/forms";
-import { CreateUserForm, UserAccessForm, UsernameForm } from "@/components/performance-dashboard";
+import { CreateUserForm, ResetPerformanceDataForm, UserAccessForm, UsernameForm } from "@/components/performance-dashboard";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -57,6 +57,14 @@ export default async function SettingsPage({
           <div className="card">
             <h2>Pengguna</h2>
             <div className="user-list">{users.map((item) => <UserAccessForm key={item.id} user={item} />)}</div>
+          </div>
+          <div className="card">
+            <h2>Reset data</h2>
+            <p className="muted">
+              Menghapus <strong>semua</strong> project beserta keyword, ranking, metrik bulanan, anotasi, riwayat import,
+              dan seluruh topic/article di Topic Tracker. Akun pengguna tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <ResetPerformanceDataForm />
           </div>
         </>
       ) : null}

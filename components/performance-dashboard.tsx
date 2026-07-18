@@ -8,6 +8,7 @@ import {
   createPerformanceProjectAction,
   importBrainSnapshotAction,
   importPerformanceDataAction,
+  resetPerformanceDataAction,
   saveMonthlyMetricAction,
   updateKeywordAction,
   updateOwnUsernameAction,
@@ -344,6 +345,85 @@ export function TrendBars({ timeline }: { timeline: Array<{ month: string; organ
       ))}
       <div className="chart-legend"><span><i className="legend-sessions" />Sessions</span><span><i className="legend-conversions" />Conversions</span></div>
     </div>
+  );
+}
+
+export function TrendLine({
+  title,
+  color,
+  decimals = 0,
+  timeline
+}: {
+  title: string;
+  color: string;
+  decimals?: number;
+  timeline: Array<{ month: string; value: number | null }>;
+}) {
+  const known = timeline
+    .map((item, index) => ({ ...item, index }))
+    .filter((item): item is { month: string; value: number; index: number } => item.value !== null);
+
+  if (!known.length) {
+    return (
+      <div className="trend-line-block">
+        <h3 className="trend-line-title">{title}</h3>
+        <div className="empty-state">Belum ada data untuk grafik ini.</div>
+      </div>
+    );
+  }
+
+  const width = 720;
+  const height = 220;
+  const padLeft = 56;
+  const padRight = 16;
+  const padTop = 16;
+  const padBottom = 36;
+  const max = Math.max(...known.map((item) => item.value), 1);
+  const x = (index: number) => padLeft + (index * (width - padLeft - padRight)) / Math.max(timeline.length - 1, 1);
+  const y = (value: number) => padTop + (1 - value / max) * (height - padTop - padBottom);
+  const path = known.map((item, i) => `${i === 0 ? "M" : "L"}${x(item.index).toFixed(1)},${y(item.value).toFixed(1)}`).join(" ");
+  const labelStep = Math.max(1, Math.ceil(timeline.length / 8));
+  const gridValues = [0, max / 2, max];
+
+  return (
+    <div className="trend-line-block">
+      <h3 className="trend-line-title">{title}</h3>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Grafik ${title} per bulan`} style={{ width: "100%", height: "auto" }}>
+        {gridValues.map((value) => (
+          <g key={value}>
+            <line x1={padLeft} x2={width - padRight} y1={y(value)} y2={y(value)} stroke="currentColor" strokeOpacity={0.12} />
+            <text x={padLeft - 8} y={y(value) + 4} textAnchor="end" fontSize={11} fill="currentColor" fillOpacity={0.6}>
+              {formatMetric(value, decimals)}
+            </text>
+          </g>
+        ))}
+        <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        {known.map((item) => (
+          <circle key={item.month} cx={x(item.index)} cy={y(item.value)} r={3.5} fill={color}>
+            <title>{`${formatMonthLabel(item.month)}: ${formatMetric(item.value, decimals)}`}</title>
+          </circle>
+        ))}
+        {timeline.map((item, index) =>
+          index % labelStep === 0 || index === timeline.length - 1 ? (
+            <text key={item.month} x={x(index)} y={height - 10} textAnchor="middle" fontSize={11} fill="currentColor" fillOpacity={0.6}>
+              {formatMonthLabel(item.month).replace(/\s(\d{2})(\d{2})$/, " '$2")}
+            </text>
+          ) : null
+        )}
+      </svg>
+    </div>
+  );
+}
+
+export function ResetPerformanceDataForm() {
+  return (
+    <form action={resetPerformanceDataAction} className="form-grid">
+      <div className="field">
+        <label htmlFor="reset-confirmation">Ketik <strong>HAPUS</strong> untuk mengonfirmasi</label>
+        <input className="input" id="reset-confirmation" name="confirmation" autoComplete="off" placeholder="HAPUS" required />
+      </div>
+      <button className="button" type="submit">Hapus semua data project</button>
+    </form>
   );
 }
 

@@ -752,6 +752,29 @@ export async function importBrainSnapshotAction(formData: FormData) {
   redirectMessage("/performance/import", "success", `${snapshot.projects.length} project dan ${imported} keyword ditarik dari OKF Brain.`);
 }
 
+export async function resetPerformanceDataAction(formData: FormData) {
+  await requireAdmin();
+  const confirmation = String(formData.get("confirmation") ?? "").trim();
+
+  if (confirmation !== "HAPUS") {
+    redirectMessage("/settings", "error", 'Ketik "HAPUS" untuk mengonfirmasi reset data.');
+  }
+
+  const projectCount = await db.project.count();
+  // Menghapus project ikut menghapus keyword, ranking, metrik, anotasi,
+  // dan topic/article melalui relasi cascade.
+  const [importResult] = await db.$transaction([
+    db.dataImport.deleteMany({}),
+    db.project.deleteMany({})
+  ]);
+
+  redirectMessage(
+    "/settings",
+    "success",
+    `${projectCount} project beserta seluruh keyword, ranking, metrik, topik, dan ${importResult.count} riwayat import berhasil dihapus.`
+  );
+}
+
 export async function createUserAction(formData: FormData) {
   await requireAdmin();
   const username = String(formData.get("username") ?? "").trim();

@@ -7,7 +7,7 @@ import {
   MonthlyMetricForm,
   ProjectForm,
   RankDistribution,
-  TrendBars,
+  TrendLine,
   canEdit
 } from "@/components/performance-dashboard";
 import { requireUser } from "@/lib/auth";
@@ -64,7 +64,19 @@ export default async function PerformanceProjectPage({
           <div><h2>Traffic & conversions</h2><p className="muted">Data bulanan mengutamakan GA4 untuk sessions/conversions dan GSC untuk search metrics.</p></div>
           {editable ? <a href="#input-metric" className="button-secondary">Input manual</a> : null}
         </div>
-        <TrendBars timeline={data.timeline} />
+        <div className="grid-2 balanced-grid">
+          <TrendLine
+            title="Organic sessions"
+            color="#2563eb"
+            timeline={data.timeline.map((row) => ({ month: row.month, value: row.organicSessions }))}
+          />
+          <TrendLine
+            title="Conversions"
+            color="#16a34a"
+            decimals={2}
+            timeline={data.timeline.map((row) => ({ month: row.month, value: row.conversions }))}
+          />
+        </div>
         {data.timeline.length ? (
           <div className="table-wrap compact-table">
             <table>

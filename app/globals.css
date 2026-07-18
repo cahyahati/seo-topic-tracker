@@ -600,6 +600,20 @@ th {
   opacity: 0.56;
 }
 
+.trend-line-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(45, 33, 23, 0.03);
+}
+
+.trend-line-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 .trend-chart {
   position: relative;
   display: flex;
