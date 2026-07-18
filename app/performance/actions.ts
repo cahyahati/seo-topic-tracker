@@ -13,7 +13,12 @@ import { z } from "zod";
 import { hashPassword, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toMonthDate } from "@/lib/performance";
-import { normalizeProjectDomain, parseImportedRank, parsePerformanceWorkbook } from "@/lib/performance-import";
+import {
+  normalizeProjectDomain,
+  parseImportedRank,
+  parsePerformanceWorkbook,
+  type PerformanceImportRow
+} from "@/lib/performance-import";
 
 function optionalText(value: FormDataEntryValue | null) {
   const text = typeof value === "string" ? value.trim() : "";
@@ -260,6 +265,10 @@ async function findOrCreateProject(name: string, domain = "") {
   return existing ?? db.project.create({ data: { name, domain: normalizedDomain ? `https://${normalizedDomain}/` : null } });
 }
 
+function keywordImportKey(phrase: string, location: string, searchEngine: string) {
+  return JSON.stringify([phrase, location, searchEngine]);
+}
+
 export async function importPerformanceDataAction(formData: FormData) {
   const user = await requireEditor();
   const file = formData.get("file");
@@ -290,13 +299,18 @@ export async function importPerformanceDataAction(formData: FormData) {
       source: DataSource.IMPORT,
       fileName: file.name,
       rowsTotal: rows.length,
-      status: ImportStatus.COMPLETED
+      status: ImportStatus.FAILED,
+      notes: "Import sedang diproses."
     }
   });
 
   let imported = 0;
   let skipped = 0;
   const projectCache = new Map<string, Awaited<ReturnType<typeof findOrCreateProject>>>();
+  const resolvedRows: Array<{
+    row: PerformanceImportRow;
+    project: Awaited<ReturnType<typeof findOrCreateProject>>;
+  }> = [];
 
   for (const row of rows) {
     const projectName = String(row.project ?? row.project_name ?? "").trim();
@@ -313,7 +327,37 @@ export async function importPerformanceDataAction(formData: FormData) {
       projectCache.set(projectKey, project);
     }
 
-    if (type === ImportType.KEYWORDS) {
+    resolvedRows.push({ row, project });
+  }
+
+  try {
+    if (type === ImportType.KEYWORDS && parsedWorkbook.format === "MONTHLY_RANKING_REPORT") {
+      const projectRows = new Map<string, { projectId: string; rows: PerformanceImportRow[] }>();
+
+      for (const { row, project } of resolvedRows) {
+        const phrase = String(row.keyword ?? row.phrase ?? "").trim();
+        if (!phrase) {
+          skipped += 1;
+          continue;
+        }
+        const entry = projectRows.get(project.id) ?? { projectId: project.id, rows: [] };
+        entry.rows.push(row);
+        projectRows.set(project.id, entry);
+      }
+
+      for (const { projectId, rows: groupedRows } of projectRows.values()) {
+        const keywordRows = groupedRows.map((row) => ({
+          projectId,
+          phrase: String(row.keyword ?? row.phrase ?? "").trim(),
+          location: String(row.location ?? "Singapore").trim(),
+          searchEngine: String(row.search_engine ?? "Google.com.sg").trim(),
+          source: DataSource.IMPORT
+        }));
+        await db.keyword.createMany({ data: keywordRows, skipDuplicates: true });
+        imported += keywordRows.length;
+      }
+    } else if (type === ImportType.KEYWORDS) {
+      for (const { row, project } of resolvedRows) {
       const phrase = String(row.keyword ?? row.phrase ?? "").trim();
       if (!phrase) {
         skipped += 1;
@@ -327,36 +371,136 @@ export async function importPerformanceDataAction(formData: FormData) {
         create: { projectId: project.id, phrase, targetUrl: String(row.target_url ?? "").trim() || null, location, searchEngine, source: DataSource.IMPORT }
       });
       imported += 1;
+      }
     }
 
     if (type === ImportType.RANKINGS) {
-      const phrase = String(row.keyword ?? row.phrase ?? "").trim();
-      const checkedAtText = String(row.checked_at ?? row.date ?? "").trim();
-      const checkedAt = new Date(checkedAtText);
-      if (!phrase || Number.isNaN(checkedAt.getTime())) {
-        skipped += 1;
-        continue;
+      const rankingRowsByProject = new Map<
+        string,
+        Array<{
+          phrase: string;
+          location: string;
+          searchEngine: string;
+          checkedAt: Date;
+          device: KeywordDevice;
+          position: number | null;
+          beyondRange: boolean;
+          rankingUrl: string | null;
+        }>
+      >();
+
+      for (const { row, project } of resolvedRows) {
+        const phrase = String(row.keyword ?? row.phrase ?? "").trim();
+        const checkedAt = new Date(String(row.checked_at ?? row.date ?? "").trim());
+        if (!phrase || Number.isNaN(checkedAt.getTime())) {
+          skipped += 1;
+          continue;
+        }
+        const rank = parseImportedRank(String(row.position ?? row.rank ?? ""));
+        const rankingUrlText = String(row.ranking_url ?? row.indexed_url ?? "").trim();
+        const prepared = {
+          phrase,
+          location: String(row.location ?? "Singapore").trim(),
+          searchEngine: String(row.search_engine ?? "Google.com.sg").trim(),
+          checkedAt,
+          device: String(row.device ?? "DESKTOP").toUpperCase() === "MOBILE" ? KeywordDevice.MOBILE : KeywordDevice.DESKTOP,
+          position: rank.position,
+          beyondRange: rank.beyondRange,
+          rankingUrl: rankingUrlText && !/^n\/?a$/i.test(rankingUrlText) ? rankingUrlText : null
+        };
+        const group = rankingRowsByProject.get(project.id) ?? [];
+        group.push(prepared);
+        rankingRowsByProject.set(project.id, group);
       }
-      const location = String(row.location ?? "Singapore").trim();
-      const searchEngine = String(row.search_engine ?? "Google.com.sg").trim();
-      const keyword = await db.keyword.upsert({
-        where: { projectId_phrase_location_searchEngine: { projectId: project.id, phrase, location, searchEngine } },
-        update: {},
-        create: { projectId: project.id, phrase, location, searchEngine, source: DataSource.IMPORT }
-      });
-      const rank = parseImportedRank(String(row.position ?? row.rank ?? ""));
-      const device = String(row.device ?? "DESKTOP").toUpperCase() === "MOBILE" ? KeywordDevice.MOBILE : KeywordDevice.DESKTOP;
-      const rankingUrlText = String(row.ranking_url ?? row.indexed_url ?? "").trim();
-      const rankingUrl = rankingUrlText && !/^n\/?a$/i.test(rankingUrlText) ? rankingUrlText : null;
-      await db.rankingSnapshot.upsert({
-        where: { keywordId_checkedAt_device_source: { keywordId: keyword.id, checkedAt, device, source: DataSource.IMPORT } },
-        update: { ...rank, rankingUrl, importId: importLog.id },
-        create: { keywordId: keyword.id, checkedAt, device, source: DataSource.IMPORT, rankingUrl, importId: importLog.id, ...rank }
-      });
-      imported += 1;
+
+      for (const [projectId, projectRankings] of rankingRowsByProject) {
+        const uniqueKeywordRows = Array.from(
+          new Map(
+            projectRankings.map((row) => [
+              keywordImportKey(row.phrase, row.location, row.searchEngine),
+              {
+                projectId,
+                phrase: row.phrase,
+                location: row.location,
+                searchEngine: row.searchEngine,
+                source: DataSource.IMPORT
+              }
+            ])
+          ).values()
+        );
+
+        await db.keyword.createMany({ data: uniqueKeywordRows, skipDuplicates: true });
+        const keywords = await db.keyword.findMany({
+          where: {
+            projectId,
+            OR: uniqueKeywordRows.map(({ phrase, location, searchEngine }) => ({ phrase, location, searchEngine }))
+          },
+          select: { id: true, phrase: true, location: true, searchEngine: true }
+        });
+        const keywordIds = new Map(
+          keywords.map((keyword) => [keywordImportKey(keyword.phrase, keyword.location, keyword.searchEngine), keyword.id])
+        );
+        const snapshots = new Map<
+          string,
+          {
+            keywordId: string;
+            checkedAt: Date;
+            device: KeywordDevice;
+            source: DataSource;
+            position: number | null;
+            beyondRange: boolean;
+            rankingUrl: string | null;
+            importId: string;
+          }
+        >();
+
+        for (const row of projectRankings) {
+          const keywordId = keywordIds.get(keywordImportKey(row.phrase, row.location, row.searchEngine));
+          if (!keywordId) {
+            skipped += 1;
+            continue;
+          }
+          snapshots.set(`${keywordId}|${row.checkedAt.toISOString()}|${row.device}`, {
+            keywordId,
+            checkedAt: row.checkedAt,
+            device: row.device,
+            source: DataSource.IMPORT,
+            position: row.position,
+            beyondRange: row.beyondRange,
+            rankingUrl: row.rankingUrl,
+            importId: importLog.id
+          });
+        }
+
+        const snapshotsByDateAndDevice = new Map<string, typeof snapshots>();
+        for (const [key, snapshot] of snapshots) {
+          const groupKey = `${snapshot.checkedAt.toISOString()}|${snapshot.device}`;
+          const group = snapshotsByDateAndDevice.get(groupKey) ?? new Map();
+          group.set(key, snapshot);
+          snapshotsByDateAndDevice.set(groupKey, group);
+        }
+
+        for (const snapshotGroup of snapshotsByDateAndDevice.values()) {
+          const data = Array.from(snapshotGroup.values());
+          const { checkedAt, device } = data[0];
+          await db.$transaction([
+            db.rankingSnapshot.deleteMany({
+              where: {
+                keywordId: { in: data.map((snapshot) => snapshot.keywordId) },
+                checkedAt,
+                device,
+                source: DataSource.IMPORT
+              }
+            }),
+            db.rankingSnapshot.createMany({ data })
+          ]);
+          imported += data.length;
+        }
+      }
     }
 
     if (type === ImportType.MONTHLY_METRICS) {
+      for (const { row, project } of resolvedRows) {
       const month = String(row.month ?? "").trim();
       if (!/^\d{4}-\d{2}$/.test(month)) {
         skipped += 1;
@@ -378,34 +522,54 @@ export async function importPerformanceDataAction(formData: FormData) {
         create: { projectId: project.id, month: toMonthDate(month), source, sourceNote: file.name, importId: importLog.id, ...values }
       });
       imported += 1;
+      }
     }
+
+    const unaccounted = rows.length - imported - skipped;
+    if (unaccounted > 0) skipped += unaccounted;
+
+    const importStatus =
+      imported === 0
+        ? ImportStatus.FAILED
+        : skipped > 0
+          ? ImportStatus.PARTIAL
+          : ImportStatus.COMPLETED;
+    const importNotes =
+      imported === 0
+        ? "Tidak ada baris yang berhasil disimpan. Periksa jenis import, kolom wajib, dan tanggal ranking."
+        : skipped > 0
+          ? `${skipped} baris dilewati karena data wajib tidak lengkap atau tidak valid.`
+          : null;
+
+    await db.dataImport.update({
+      where: { id: importLog.id },
+      data: {
+        rowsImported: imported,
+        rowsSkipped: skipped,
+        status: importStatus,
+        notes: importNotes
+      }
+    });
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    console.error("Performance import failed", { errorName });
+    await db.dataImport
+      .update({
+        where: { id: importLog.id },
+        data: {
+          rowsImported: imported,
+          rowsSkipped: rows.length - imported,
+          status: ImportStatus.FAILED,
+          notes: `Import gagal di server (${errorName}).`
+        }
+      })
+      .catch(() => undefined);
+    redirectMessage(
+      "/performance/import",
+      "error",
+      "Import gagal di server. Tidak ada data yang ditandai selesai; coba ulang setelah memeriksa koneksi database."
+    );
   }
-
-  const unaccounted = rows.length - imported - skipped;
-  if (unaccounted > 0) skipped += unaccounted;
-
-  const importStatus =
-    imported === 0
-      ? ImportStatus.FAILED
-      : skipped > 0
-        ? ImportStatus.PARTIAL
-        : ImportStatus.COMPLETED;
-  const importNotes =
-    imported === 0
-      ? "Tidak ada baris yang berhasil disimpan. Periksa jenis import, kolom wajib, dan tanggal ranking."
-      : skipped > 0
-        ? `${skipped} baris dilewati karena data wajib tidak lengkap atau tidak valid.`
-        : null;
-
-  await db.dataImport.update({
-    where: { id: importLog.id },
-    data: {
-      rowsImported: imported,
-      rowsSkipped: skipped,
-      status: importStatus,
-      notes: importNotes
-    }
-  });
 
   redirectMessage(
     "/performance/import",
