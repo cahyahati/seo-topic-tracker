@@ -415,14 +415,15 @@ export function TrendLine({
   );
 }
 
-export function ResetPerformanceDataForm() {
+export function ResetPerformanceDataForm({ scope, buttonLabel }: { scope: "PORTFOLIO" | "TOPICS"; buttonLabel: string }) {
   return (
     <form action={resetPerformanceDataAction} className="form-grid">
+      <input type="hidden" name="scope" value={scope} />
       <div className="field">
-        <label htmlFor="reset-confirmation">Ketik <strong>HAPUS</strong> untuk mengonfirmasi</label>
-        <input className="input" id="reset-confirmation" name="confirmation" autoComplete="off" placeholder="HAPUS" required />
+        <label htmlFor={`reset-confirmation-${scope}`}>Ketik <strong>HAPUS</strong> untuk mengonfirmasi</label>
+        <input className="input" id={`reset-confirmation-${scope}`} name="confirmation" autoComplete="off" placeholder="HAPUS" required />
       </div>
-      <button className="button" type="submit">Hapus semua data project</button>
+      <button className="button" type="submit">{buttonLabel}</button>
     </form>
   );
 }

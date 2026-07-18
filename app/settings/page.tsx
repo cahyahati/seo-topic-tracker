@@ -60,11 +60,24 @@ export default async function SettingsPage({
           </div>
           <div className="card">
             <h2>Reset data</h2>
-            <p className="muted">
-              Menghapus <strong>semua</strong> project beserta keyword, ranking, metrik bulanan, anotasi, riwayat import,
-              dan seluruh topic/article di Topic Tracker. Akun pengguna tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan.
-            </p>
-            <ResetPerformanceDataForm />
+            <p className="muted">Tindakan di bawah tidak dapat dibatalkan. Akun pengguna tidak pernah ikut terhapus.</p>
+            <div className="grid-2 balanced-grid">
+              <div>
+                <h3>SEO Portfolio</h3>
+                <p className="muted">
+                  Menghapus semua keyword, ranking, metrik bulanan, anotasi, riwayat import, dan project yang tidak
+                  memiliki topic. Topic Tracker tidak tersentuh.
+                </p>
+                <ResetPerformanceDataForm scope="PORTFOLIO" buttonLabel="Reset SEO Portfolio" />
+              </div>
+              <div>
+                <h3>Topic Tracker</h3>
+                <p className="muted">
+                  Menghapus semua topic/article beserta riwayat statusnya. Project dan data SEO portfolio tetap ada.
+                </p>
+                <ResetPerformanceDataForm scope="TOPICS" buttonLabel="Reset Topic Tracker" />
+              </div>
+            </div>
           </div>
         </>
       ) : null}

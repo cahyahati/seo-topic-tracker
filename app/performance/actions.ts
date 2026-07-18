@@ -754,24 +754,36 @@ export async function importBrainSnapshotAction(formData: FormData) {
 
 export async function resetPerformanceDataAction(formData: FormData) {
   await requireAdmin();
+  const scope = String(formData.get("scope") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "").trim();
 
   if (confirmation !== "HAPUS") {
     redirectMessage("/settings", "error", 'Ketik "HAPUS" untuk mengonfirmasi reset data.');
   }
 
-  const projectCount = await db.project.count();
-  // Menghapus project ikut menghapus keyword, ranking, metrik, anotasi,
-  // dan topic/article melalui relasi cascade.
-  const [importResult] = await db.$transaction([
+  if (scope === "TOPICS") {
+    const result = await db.article.deleteMany({});
+    redirectMessage("/settings", "success", `${result.count} topic Topic Tracker berhasil dihapus. Data SEO portfolio tidak tersentuh.`);
+  }
+
+  if (scope !== "PORTFOLIO") {
+    redirectMessage("/settings", "error", "Jenis reset tidak dikenali.");
+  }
+
+  // Hapus seluruh data SEO portfolio; project yang masih punya topic
+  // dipertahankan agar Topic Tracker tetap utuh.
+  const [importResult, , , keywordResult, projectResult] = await db.$transaction([
     db.dataImport.deleteMany({}),
-    db.project.deleteMany({})
+    db.projectAnnotation.deleteMany({}),
+    db.monthlyMetric.deleteMany({}),
+    db.keyword.deleteMany({}),
+    db.project.deleteMany({ where: { topics: { none: {} } } })
   ]);
 
   redirectMessage(
     "/settings",
     "success",
-    `${projectCount} project beserta seluruh keyword, ranking, metrik, topik, dan ${importResult.count} riwayat import berhasil dihapus.`
+    `SEO portfolio direset: ${projectResult.count} project, ${keywordResult.count} keyword beserta ranking, metrik, anotasi, dan ${importResult.count} riwayat import dihapus. Topic Tracker tidak tersentuh.`
   );
 }
 
