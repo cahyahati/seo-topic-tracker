@@ -17,6 +17,7 @@ export default async function PerformancePage({
   const params = await searchParams;
   const data = await getPortfolioPerformance(params.month);
   const selectedMonth = monthKey(data.selectedMonth);
+  const monthInvalid = Boolean(params.month && !/^\d{4}-\d{2}$/.test(params.month));
 
   return (
     <div className="stack">
@@ -41,6 +42,7 @@ export default async function PerformancePage({
         </form>
       </section>
 
+      {monthInvalid ? <div className="error-box">Format bulan tidak valid, menampilkan {formatMonthLabel(selectedMonth)}.</div> : null}
       {params.error ? <div className="error-box">{params.error}</div> : null}
       {params.success ? <div className="success-box">{params.success}</div> : null}
 

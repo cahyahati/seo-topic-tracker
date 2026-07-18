@@ -79,7 +79,10 @@ function latestRankForKeyword(
     rankingUrl: string | null;
   }>
 ) {
-  return [...rankings].sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime())[0] ?? null;
+  // Prefer desktop sebagai device kanonik agar angka portfolio tidak berfluktuasi
+  // tergantung device mana yang terakhir dicek.
+  const sorted = [...rankings].sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime());
+  return sorted.find((rank) => rank.device === KeywordDevice.DESKTOP) ?? sorted[0] ?? null;
 }
 
 export async function getPortfolioPerformance(monthValue?: string) {
@@ -95,7 +98,7 @@ export async function getPortfolioPerformance(monthValue?: string) {
         include: {
           rankings: {
             orderBy: { checkedAt: "desc" },
-            take: 4
+            take: 8
           }
         },
         orderBy: { phrase: "asc" }
@@ -201,7 +204,9 @@ export async function getPerformanceProject(projectId: string) {
     return { keyword, current, previous, movement };
   });
 
-  const knownCurrentRanks = rankingRows.filter((row) => row.current?.position !== null && !row.current?.beyondRange);
+  const knownCurrentRanks = rankingRows.filter(
+    (row) => row.current != null && row.current.position !== null && !row.current.beyondRange
+  );
   const monthGroups = new Map<string, MonthlyMetric[]>();
   for (const metric of project.monthlyMetrics) {
     const key = monthKey(metric.month);

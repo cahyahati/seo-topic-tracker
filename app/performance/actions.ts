@@ -150,6 +150,8 @@ export async function updateKeywordAction(formData: FormData) {
   try {
     const payload = keywordPayload(formData);
     if (!payload.id) redirectMessage(`/performance/projects/${projectId}`, "error", "Keyword tidak ditemukan.");
+    const existing = await db.keyword.findUnique({ where: { id: payload.id }, select: { id: true } });
+    if (!existing) redirectMessage(`/performance/projects/${projectId}`, "error", "Keyword tidak ditemukan.");
     await db.keyword.update({
       where: { id: payload.id },
       data: {
@@ -190,6 +192,11 @@ export async function saveMonthlyMetricAction(formData: FormData) {
 
   if (Object.values(values).every((value) => value === null)) {
     redirectMessage(`/performance/projects/${projectId}`, "error", "Isi minimal satu metrik.");
+  }
+
+  const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } });
+  if (!project) {
+    redirectMessage("/performance", "error", "Project tidak ditemukan.");
   }
 
   const importLog = await db.dataImport.create({
@@ -353,8 +360,9 @@ export async function importPerformanceDataAction(formData: FormData) {
           searchEngine: String(row.search_engine ?? "Google.com.sg").trim(),
           source: DataSource.IMPORT
         }));
-        await db.keyword.createMany({ data: keywordRows, skipDuplicates: true });
-        imported += keywordRows.length;
+        const created = await db.keyword.createMany({ data: keywordRows, skipDuplicates: true });
+        imported += created.count;
+        skipped += keywordRows.length - created.count;
       }
     } else if (type === ImportType.KEYWORDS) {
       for (const { row, project } of resolvedRows) {
@@ -623,6 +631,8 @@ export async function importBrainSnapshotAction(formData: FormData) {
 
   let imported = 0;
   for (const brainProject of snapshot.projects) {
+    const brainDomainHost = normalizeProjectDomain(brainProject.domain ?? "");
+    const brainDomain = brainDomainHost ? `https://${brainDomainHost}/` : null;
     const existingProject = await db.project.findFirst({
       where: {
         OR: [
@@ -637,7 +647,7 @@ export async function importBrainSnapshotAction(formData: FormData) {
           data: {
             brainSlug: brainProject.brainSlug,
             name: brainProject.name,
-            domain: brainProject.domain,
+            domain: brainDomain,
             market: brainProject.market,
             brainSyncedAt: new Date(snapshot.generatedAt)
           }
@@ -646,7 +656,7 @@ export async function importBrainSnapshotAction(formData: FormData) {
           data: {
             brainSlug: brainProject.brainSlug,
             name: brainProject.name,
-            domain: brainProject.domain,
+            domain: brainDomain,
             market: brainProject.market,
             brainSyncedAt: new Date(snapshot.generatedAt)
           }

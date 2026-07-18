@@ -17,6 +17,14 @@ import {
 import { formatMetric } from "@/lib/performance";
 import { formatDate, formatMonthLabel } from "@/lib/utils";
 
+function domainHostname(domain: string) {
+  try {
+    return new URL(domain).hostname;
+  } catch {
+    return domain;
+  }
+}
+
 export function Delta({ value }: { value: number | null }) {
   if (value === null) return <span className="metric-delta neutral">—</span>;
   const className = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
@@ -42,8 +50,8 @@ export function PortfolioStats({
     { label: "Project aktif", value: formatMetric(totals.projects), note: "portfolio" },
     { label: "Keyword aktif", value: formatMetric(totals.keywords), note: "semua project" },
     { label: "Keyword Top 10", value: formatMetric(totals.top10), note: "snapshot ranking terbaru" },
-    { label: "Organic sessions", value: formatMetric(totals.sessions), note: `${month} · ${totals.trafficCoverage}/${totals.projects} project` },
-    { label: "Conversions", value: formatMetric(totals.conversions, 2), note: `${month} · ${totals.conversionCoverage}/${totals.projects} project` }
+    { label: "Organic sessions", value: formatMetric(totals.sessions), note: `${formatMonthLabel(month)} · ${totals.trafficCoverage}/${totals.projects} project` },
+    { label: "Conversions", value: formatMetric(totals.conversions, 2), note: `${formatMonthLabel(month)} · ${totals.conversionCoverage}/${totals.projects} project` }
   ];
 
   return (
@@ -101,7 +109,7 @@ export function PortfolioTable({ rows }: { rows: PortfolioRow[] }) {
                 <div className="topic-cell">
                   <Link className="table-link" href={`/performance/projects/${row.id}`}>{row.name}</Link>
                   <span className="meta-text">{row.market} · {row.keywordCount} keyword</span>
-                  {row.domain ? <a className="meta-link" href={row.domain} target="_blank" rel="noreferrer">{new URL(row.domain).hostname}</a> : null}
+                  {row.domain ? <a className="meta-link" href={row.domain} target="_blank" rel="noreferrer">{domainHostname(row.domain)}</a> : null}
                 </div>
               </td>
               <td>
