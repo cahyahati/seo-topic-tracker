@@ -1,6 +1,6 @@
 "use server";
 
-import { ArticleStatus, TopicContentType, TopicPriority } from "@prisma/client";
+import { ArticleStatus, TopicContentType, TopicPriority, UserRole } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { read, utils } from "xlsx";
@@ -22,12 +22,13 @@ function normalizeOptionalString(value: FormDataEntryValue | null) {
 }
 
 const loginSchema = z.object({
-  email: z.string().email("Email tidak valid."),
+  identity: z.string().min(3, "Username atau email wajib diisi."),
   password: z.string().min(8, "Password minimal 8 karakter.")
 });
 
 const setupSchema = z
   .object({
+    username: z.string().min(3, "Username minimal 3 karakter.").regex(/^[a-zA-Z0-9._-]+$/, "Username hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung."),
     email: z.string().email("Email tidak valid."),
     password: z.string().min(8, "Password minimal 8 karakter."),
     confirmPassword: z.string().min(8, "Konfirmasi password minimal 8 karakter.")
@@ -150,30 +151,38 @@ function redirectWithMessage(path: string, type: "error" | "success", message: s
 export async function loginAction(formData: FormData) {
   try {
     const payload = loginSchema.parse({
-      email: String(formData.get("email") ?? "").trim(),
+      identity: String(formData.get("identity") ?? "").trim(),
       password: String(formData.get("password") ?? "")
     });
 
-    const user = await db.user.findUnique({
-      where: { email: payload.email }
+    const user = await db.user.findFirst({
+      where: {
+        isActive: true,
+        OR: [
+          { email: { equals: payload.identity, mode: "insensitive" } },
+          { username: { equals: payload.identity, mode: "insensitive" } }
+        ]
+      }
     });
 
     if (!user) {
-      redirectWithMessage("/login", "error", "Email atau password salah.");
+      redirectWithMessage("/login", "error", "Username/email atau password salah.");
     }
 
     const valid = await verifyPassword(payload.password, user.passwordHash);
 
     if (!valid) {
-      redirectWithMessage("/login", "error", "Email atau password salah.");
+      redirectWithMessage("/login", "error", "Username/email atau password salah.");
     }
 
     await createSession({
       userId: user.id,
-      email: user.email
+      email: user.email,
+      username: user.username,
+      role: user.role
     });
 
-    redirect("/dashboard");
+    redirect("/performance");
   } catch (error) {
     if (error instanceof z.ZodError) {
       redirectWithMessage("/login", "error", error.issues[0]?.message ?? "Data login tidak valid.");
@@ -192,6 +201,7 @@ export async function setupAdminAction(formData: FormData) {
 
   try {
     const payload = setupSchema.parse({
+      username: String(formData.get("username") ?? "").trim(),
       email: String(formData.get("email") ?? "").trim(),
       password: String(formData.get("password") ?? ""),
       confirmPassword: String(formData.get("confirmPassword") ?? "")
@@ -201,17 +211,21 @@ export async function setupAdminAction(formData: FormData) {
 
     const user = await db.user.create({
       data: {
+        username: payload.username,
         email: payload.email,
-        passwordHash
+        passwordHash,
+        role: UserRole.ADMIN
       }
     });
 
     await createSession({
       userId: user.id,
-      email: user.email
+      email: user.email,
+      username: user.username,
+      role: user.role
     });
 
-    redirect("/dashboard");
+    redirect("/performance");
   } catch (error) {
     if (error instanceof z.ZodError) {
       redirectWithMessage("/setup", "error", error.issues[0]?.message ?? "Data setup tidak valid.");

@@ -30,6 +30,10 @@ export default async function SetupPage({
         {params.error ? <div className="error-box">{params.error}</div> : null}
         <form action={setupAdminAction} className="form-grid">
           <div className="field">
+            <label htmlFor="username">Username admin</label>
+            <input className="input" id="username" name="username" minLength={3} autoComplete="username" required />
+          </div>
+          <div className="field">
             <label htmlFor="email">Email admin</label>
             <input className="input" id="email" name="email" type="email" required />
           </div>

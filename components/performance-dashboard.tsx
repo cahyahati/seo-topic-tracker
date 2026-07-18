@@ -1,0 +1,379 @@
+import { Keyword, Project, UserRole } from "@prisma/client";
+import Link from "next/link";
+
+import {
+  addProjectAnnotationAction,
+  createUserAction,
+  createKeywordAction,
+  createPerformanceProjectAction,
+  importBrainSnapshotAction,
+  importPerformanceDataAction,
+  saveMonthlyMetricAction,
+  updateKeywordAction,
+  updateOwnUsernameAction,
+  updatePerformanceProjectAction,
+  updateUserAccessAction
+} from "@/app/performance/actions";
+import { formatMetric } from "@/lib/performance";
+import { formatDate, formatMonthLabel } from "@/lib/utils";
+
+export function Delta({ value }: { value: number | null }) {
+  if (value === null) return <span className="metric-delta neutral">—</span>;
+  const className = value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
+  return <span className={`metric-delta ${className}`}>{value > 0 ? "+" : ""}{value.toFixed(1)}%</span>;
+}
+
+export function PortfolioStats({
+  totals,
+  month
+}: {
+  totals: {
+    projects: number;
+    keywords: number;
+    top10: number;
+    sessions: number | null;
+    conversions: number | null;
+    trafficCoverage: number;
+    conversionCoverage: number;
+  };
+  month: string;
+}) {
+  const items = [
+    { label: "Project aktif", value: formatMetric(totals.projects), note: "portfolio" },
+    { label: "Keyword aktif", value: formatMetric(totals.keywords), note: "semua project" },
+    { label: "Keyword Top 10", value: formatMetric(totals.top10), note: "snapshot ranking terbaru" },
+    { label: "Organic sessions", value: formatMetric(totals.sessions), note: `${month} · ${totals.trafficCoverage}/${totals.projects} project` },
+    { label: "Conversions", value: formatMetric(totals.conversions, 2), note: `${month} · ${totals.conversionCoverage}/${totals.projects} project` }
+  ];
+
+  return (
+    <div className="grid-5">
+      {items.map((item) => (
+        <div className="card stat-card" key={item.label}>
+          <div className="stat-label">{item.label}</div>
+          <div className="stat-value">{item.value}</div>
+          <div className="meta-text">{item.note}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type PortfolioRow = {
+  id: string;
+  name: string;
+  domain: string | null;
+  market: string;
+  keywordCount: number;
+  rankedCount: number;
+  top3: number;
+  top10: number;
+  top20: number;
+  sessions: number | null;
+  conversions: number | null;
+  sessionsMom: number | null;
+  sessionsYoy: number | null;
+  conversionsMom: number | null;
+  conversionsYoy: number | null;
+  sessionsTarget: number | null;
+  conversionsTarget: number | null;
+  latestRankDate: Date | null;
+  latestMetricDate: Date | null;
+};
+
+export function PortfolioTable({ rows }: { rows: PortfolioRow[] }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Ranking</th>
+            <th>Organic sessions</th>
+            <th>Conversions</th>
+            <th>Data terakhir</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>
+                <div className="topic-cell">
+                  <Link className="table-link" href={`/performance/projects/${row.id}`}>{row.name}</Link>
+                  <span className="meta-text">{row.market} · {row.keywordCount} keyword</span>
+                  {row.domain ? <a className="meta-link" href={row.domain} target="_blank" rel="noreferrer">{new URL(row.domain).hostname}</a> : null}
+                </div>
+              </td>
+              <td>
+                <div className="rank-pills">
+                  <span>Top 3 <strong>{row.top3}</strong></span>
+                  <span>Top 10 <strong>{row.top10}</strong></span>
+                  <span>Top 20 <strong>{row.top20}</strong></span>
+                </div>
+                <div className="meta-text">{row.rankedCount}/{row.keywordCount} memiliki data</div>
+              </td>
+              <td>
+                <div className="metric-cell">
+                  <strong>{formatMetric(row.sessions)}</strong>
+                  <span>MoM <Delta value={row.sessionsMom} /> · YoY <Delta value={row.sessionsYoy} /></span>
+                  {row.sessionsTarget !== null ? <span className="meta-text">Target {formatMetric(row.sessionsTarget)}</span> : null}
+                </div>
+              </td>
+              <td>
+                <div className="metric-cell">
+                  <strong>{formatMetric(row.conversions, 2)}</strong>
+                  <span>MoM <Delta value={row.conversionsMom} /> · YoY <Delta value={row.conversionsYoy} /></span>
+                  {row.conversionsTarget !== null ? <span className="meta-text">Target {formatMetric(row.conversionsTarget, 2)}</span> : null}
+                </div>
+              </td>
+              <td>
+                <div className="topic-cell">
+                  <span>Rank: {formatDate(row.latestRankDate)}</span>
+                  <span>Metrik: {formatDate(row.latestMetricDate)}</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ProjectForm({ project }: { project?: Project }) {
+  const action = project ? updatePerformanceProjectAction : createPerformanceProjectAction;
+  return (
+    <form action={action} className="form-grid">
+      {project ? <input type="hidden" name="id" value={project.id} /> : null}
+      <div className="two-columns">
+        <div className="field">
+          <label htmlFor="project-name-performance">Nama project</label>
+          <input className="input" id="project-name-performance" name="name" defaultValue={project?.name} required />
+        </div>
+        <div className="field">
+          <label htmlFor="brainSlug">Slug OKF Brain</label>
+          <input className="input" id="brainSlug" name="brainSlug" defaultValue={project?.brainSlug ?? ""} placeholder="contoh: novena-ent" />
+        </div>
+      </div>
+      <div className="two-columns">
+        <div className="field">
+          <label htmlFor="domain">Domain</label>
+          <input className="input" id="domain" name="domain" type="url" defaultValue={project?.domain ?? ""} placeholder="https://example.com/" />
+        </div>
+        <div className="field">
+          <label htmlFor="market">Market</label>
+          <input className="input" id="market" name="market" defaultValue={project?.market ?? "Singapore"} required />
+        </div>
+      </div>
+      <div className="three-columns">
+        <div className="field">
+          <label htmlFor="rankTrackingFrequency">Frekuensi ranking</label>
+          <select className="select" id="rankTrackingFrequency" name="rankTrackingFrequency" defaultValue={project?.rankTrackingFrequency ?? "WEEKLY"}>
+            <option value="DAILY">Harian</option>
+            <option value="WEEKLY">Mingguan</option>
+            <option value="MONTHLY">Bulanan</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="organicSessionsTarget">Target sessions/bulan</label>
+          <input className="input" id="organicSessionsTarget" name="organicSessionsTarget" type="number" min="0" defaultValue={project?.organicSessionsTarget ?? ""} />
+        </div>
+        <div className="field">
+          <label htmlFor="conversionsTarget">Target conversions/bulan</label>
+          <input className="input" id="conversionsTarget" name="conversionsTarget" type="number" min="0" step="0.01" defaultValue={project?.conversionsTarget ?? ""} />
+        </div>
+      </div>
+      {project ? (
+        <div className="field">
+          <label htmlFor="project-active">Status project</label>
+          <select className="select" id="project-active" name="isActive" defaultValue={String(project.isActive)}>
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </select>
+        </div>
+      ) : <input type="hidden" name="isActive" value="true" />}
+      <button className="button" type="submit">{project ? "Simpan perubahan project" : "Tambah project"}</button>
+    </form>
+  );
+}
+
+export function KeywordForm({ keyword, projectId }: { keyword?: Keyword; projectId: string }) {
+  const action = keyword ? updateKeywordAction : createKeywordAction;
+  return (
+    <form action={action} className="form-grid">
+      <input type="hidden" name="projectId" value={projectId} />
+      {keyword ? <input type="hidden" name="id" value={keyword.id} /> : null}
+      <div className="field">
+        <label htmlFor={keyword ? `phrase-${keyword.id}` : "new-keyword-phrase"}>Keyword</label>
+        <input className="input" id={keyword ? `phrase-${keyword.id}` : "new-keyword-phrase"} name="phrase" defaultValue={keyword?.phrase} required />
+      </div>
+      <div className="field">
+        <label htmlFor={keyword ? `target-${keyword.id}` : "new-keyword-target"}>Target URL</label>
+        <input className="input" id={keyword ? `target-${keyword.id}` : "new-keyword-target"} name="targetUrl" defaultValue={keyword?.targetUrl ?? ""} placeholder="/service-page/ atau URL penuh" />
+      </div>
+      <div className="three-columns">
+        <div className="field">
+          <label htmlFor={keyword ? `location-${keyword.id}` : "new-keyword-location"}>Lokasi</label>
+          <input className="input" id={keyword ? `location-${keyword.id}` : "new-keyword-location"} name="location" defaultValue={keyword?.location ?? "Singapore"} required />
+        </div>
+        <div className="field">
+          <label htmlFor={keyword ? `engine-${keyword.id}` : "new-keyword-engine"}>Search engine</label>
+          <input className="input" id={keyword ? `engine-${keyword.id}` : "new-keyword-engine"} name="searchEngine" defaultValue={keyword?.searchEngine ?? "Google.com.sg"} required />
+        </div>
+        <div className="field">
+          <label htmlFor={keyword ? `active-${keyword.id}` : "new-keyword-active"}>Status</label>
+          <select className="select" id={keyword ? `active-${keyword.id}` : "new-keyword-active"} name="isActive" defaultValue={String(keyword?.isActive ?? true)}>
+            <option value="true">Aktif</option>
+            <option value="false">Nonaktif</option>
+          </select>
+        </div>
+      </div>
+      <button className="button" type="submit">{keyword ? "Simpan keyword" : "Tambah keyword"}</button>
+    </form>
+  );
+}
+
+export function MonthlyMetricForm({ projectId }: { projectId: string }) {
+  return (
+    <form action={saveMonthlyMetricAction} className="form-grid">
+      <input type="hidden" name="projectId" value={projectId} />
+      <div className="field">
+        <label htmlFor="metric-month">Bulan</label>
+        <input className="input" id="metric-month" name="month" type="month" required />
+      </div>
+      <div className="three-columns">
+        <div className="field"><label htmlFor="organicSessions">Organic sessions</label><input className="input" id="organicSessions" name="organicSessions" type="number" min="0" /></div>
+        <div className="field"><label htmlFor="conversions">Conversions</label><input className="input" id="conversions" name="conversions" type="number" min="0" step="0.01" /></div>
+        <div className="field"><label htmlFor="gscClicks">GSC clicks</label><input className="input" id="gscClicks" name="gscClicks" type="number" min="0" /></div>
+      </div>
+      <div className="three-columns">
+        <div className="field"><label htmlFor="gscImpressions">GSC impressions</label><input className="input" id="gscImpressions" name="gscImpressions" type="number" min="0" /></div>
+        <div className="field"><label htmlFor="gscCtr">GSC CTR (%)</label><input className="input" id="gscCtr" name="gscCtr" type="number" min="0" step="0.01" /></div>
+        <div className="field"><label htmlFor="gscAveragePosition">GSC average position</label><input className="input" id="gscAveragePosition" name="gscAveragePosition" type="number" min="0" step="0.01" /></div>
+      </div>
+      <button className="button" type="submit">Simpan metrik manual</button>
+    </form>
+  );
+}
+
+export function AnnotationForm({ projectId }: { projectId: string }) {
+  return (
+    <form action={addProjectAnnotationAction} className="form-grid">
+      <input type="hidden" name="projectId" value={projectId} />
+      <div className="two-columns">
+        <div className="field"><label htmlFor="annotation-date">Tanggal</label><input className="input" id="annotation-date" name="eventDate" type="date" required /></div>
+        <div className="field"><label htmlFor="annotation-title">Judul</label><input className="input" id="annotation-title" name="title" placeholder="Contoh: Homepage redesign" required /></div>
+      </div>
+      <div className="field"><label htmlFor="annotation-note">Catatan</label><textarea className="textarea compact-textarea" id="annotation-note" name="note" rows={3} /></div>
+      <button className="button" type="submit">Tambah anotasi</button>
+    </form>
+  );
+}
+
+export function PerformanceImportForm() {
+  return (
+    <form action={importPerformanceDataAction} className="form-grid" encType="multipart/form-data">
+      <div className="field">
+        <label htmlFor="performance-import-type">Jenis data</label>
+        <select className="select" id="performance-import-type" name="type" defaultValue="KEYWORDS">
+          <option value="KEYWORDS">Keyword</option>
+          <option value="RANKINGS">Ranking</option>
+          <option value="MONTHLY_METRICS">Metrik bulanan</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="performance-import-file">CSV atau Excel</label>
+        <input className="input file-input" id="performance-import-file" name="file" type="file" accept=".csv,.xlsx,.xls" required />
+      </div>
+      <button className="button" type="submit">Import data</button>
+    </form>
+  );
+}
+
+export function BrainImportForm() {
+  return (
+    <form action={importBrainSnapshotAction} className="form-grid" encType="multipart/form-data">
+      <div className="field">
+        <label htmlFor="brain-snapshot-file">Snapshot OKF Brain (JSON)</label>
+        <input className="input file-input" id="brain-snapshot-file" name="file" type="file" accept=".json,application/json" required />
+      </div>
+      <button className="button" type="submit">Import snapshot OKF Brain</button>
+    </form>
+  );
+}
+
+export function RankDistribution({ distribution }: { distribution: { top3: number; top10: number; top20: number; top100: number; beyond100: number; noData: number } }) {
+  const buckets = [
+    ["Top 3", distribution.top3],
+    ["Top 10", distribution.top10],
+    ["Top 20", distribution.top20],
+    ["Top 100", distribution.top100],
+    ["101+", distribution.beyond100],
+    ["Belum ada data", distribution.noData]
+  ];
+  return <div className="rank-grid">{buckets.map(([label, value]) => <div className="rank-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;
+}
+
+export function TrendBars({ timeline }: { timeline: Array<{ month: string; organicSessions: number | null; conversions: number | null }> }) {
+  if (!timeline.length) return <div className="empty-state">Belum ada data GA4/GSC atau input manual.</div>;
+  const maxSessions = Math.max(...timeline.map((item) => item.organicSessions ?? 0), 1);
+  const maxConversions = Math.max(...timeline.map((item) => item.conversions ?? 0), 1);
+  return (
+    <div className="trend-chart" role="img" aria-label="Tren organic sessions dan conversions bulanan">
+      {timeline.map((item) => (
+        <div className="trend-column" key={item.month}>
+          <div className="trend-bars">
+            <span className="trend-bar sessions" style={{ height: `${Math.max(((item.organicSessions ?? 0) / maxSessions) * 100, item.organicSessions ? 4 : 0)}%` }} title={`Sessions ${formatMetric(item.organicSessions)}`} />
+            <span className="trend-bar conversions" style={{ height: `${Math.max(((item.conversions ?? 0) / maxConversions) * 100, item.conversions ? 4 : 0)}%` }} title={`Conversions ${formatMetric(item.conversions, 2)}`} />
+          </div>
+          <span className="trend-label">{formatMonthLabel(item.month).replace(/\s\d{4}$/, "")}</span>
+        </div>
+      ))}
+      <div className="chart-legend"><span><i className="legend-sessions" />Sessions</span><span><i className="legend-conversions" />Conversions</span></div>
+    </div>
+  );
+}
+
+export function canEdit(role: UserRole) {
+  return role === UserRole.ADMIN || role === UserRole.EDITOR;
+}
+
+export function CreateUserForm() {
+  return (
+    <form action={createUserAction} className="form-grid">
+      <div className="two-columns">
+        <div className="field"><label htmlFor="new-user-username">Username</label><input className="input" id="new-user-username" name="username" minLength={3} required /></div>
+        <div className="field"><label htmlFor="new-user-email">Email</label><input className="input" id="new-user-email" name="email" type="email" required /></div>
+      </div>
+      <div className="two-columns">
+        <div className="field"><label htmlFor="new-user-password">Password awal</label><input className="input" id="new-user-password" name="password" type="password" minLength={8} required /></div>
+        <div className="field"><label htmlFor="new-user-role">Role</label><select className="select" id="new-user-role" name="role" defaultValue="VIEWER"><option value="ADMIN">Admin</option><option value="EDITOR">Editor</option><option value="VIEWER">Viewer</option></select></div>
+      </div>
+      <button className="button" type="submit">Tambah pengguna</button>
+    </form>
+  );
+}
+
+export function UsernameForm({ username }: { username: string | null }) {
+  return (
+    <form action={updateOwnUsernameAction} className="form-grid">
+      <div className="field">
+        <label htmlFor="account-username">Username</label>
+        <input className="input" id="account-username" name="username" defaultValue={username ?? ""} minLength={3} required />
+      </div>
+      <button className="button-secondary" type="submit">Simpan username</button>
+    </form>
+  );
+}
+
+export function UserAccessForm({ user }: { user: { id: string; username: string | null; email: string; role: UserRole; isActive: boolean } }) {
+  return (
+    <form action={updateUserAccessAction} className="user-access-row">
+      <input type="hidden" name="id" value={user.id} />
+      <div><strong>{user.username ?? "Username belum diatur"}</strong><span>{user.email}</span></div>
+      <select className="select" name="role" defaultValue={user.role} aria-label={`Role ${user.username ?? user.email}`}><option value="ADMIN">Admin</option><option value="EDITOR">Editor</option><option value="VIEWER">Viewer</option></select>
+      <select className="select" name="isActive" defaultValue={String(user.isActive)} aria-label={`Status ${user.username ?? user.email}`}><option value="true">Aktif</option><option value="false">Nonaktif</option></select>
+      <button className="button-secondary" type="submit">Simpan</button>
+    </form>
+  );
+}

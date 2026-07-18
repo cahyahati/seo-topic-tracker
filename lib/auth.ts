@@ -1,5 +1,6 @@
 import "server-only";
 
+import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
@@ -23,6 +24,8 @@ function getSecret() {
 type SessionPayload = {
   userId: string;
   email: string;
+  username?: string | null;
+  role: UserRole;
 };
 
 export async function hashPassword(password: string) {
@@ -82,9 +85,29 @@ export async function requireUser() {
     where: { id: session.userId }
   });
 
-  if (!user) {
+  if (!user || !user.isActive) {
     await clearSession();
     redirect("/login");
+  }
+
+  return user;
+}
+
+export async function requireEditor() {
+  const user = await requireUser();
+
+  if (!user.isActive || user.role === UserRole.VIEWER) {
+    redirect("/performance?error=" + encodeURIComponent("Akun ini hanya memiliki akses melihat data."));
+  }
+
+  return user;
+}
+
+export async function requireAdmin() {
+  const user = await requireUser();
+
+  if (!user.isActive || user.role !== UserRole.ADMIN) {
+    redirect("/performance?error=" + encodeURIComponent("Aksi ini hanya tersedia untuk admin."));
   }
 
   return user;
@@ -96,11 +119,11 @@ export async function redirectIfAuthenticated() {
   if (session) {
     const user = await db.user.findUnique({
       where: { id: session.userId },
-      select: { id: true }
+      select: { id: true, isActive: true }
     });
 
-    if (user) {
-      redirect("/dashboard");
+    if (user?.isActive) {
+      redirect("/performance");
     }
   }
 }

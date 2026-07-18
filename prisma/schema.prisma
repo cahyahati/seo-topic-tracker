@@ -29,20 +29,170 @@ enum TopicContentType {
   LISTICLE
 }
 
+enum UserRole {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum KeywordDevice {
+  DESKTOP
+  MOBILE
+}
+
+enum DataSource {
+  GA4
+  GSC
+  RANK_TRACKER
+  MANUAL
+  IMPORT
+  OKF_BRAIN
+}
+
+enum ImportType {
+  KEYWORDS
+  RANKINGS
+  MONTHLY_METRICS
+  OKF_BRAIN
+}
+
+enum ImportStatus {
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
+  username     String?  @unique
   passwordHash String
+  role         UserRole @default(ADMIN)
+  isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  imports      DataImport[]
+  annotations  ProjectAnnotation[]
 }
 
 model Project {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  topics    Article[]
+  id                      String              @id @default(cuid())
+  name                    String              @unique
+  brainSlug               String?             @unique
+  domain                  String?
+  market                  String              @default("Singapore")
+  rankTrackingFrequency   String              @default("WEEKLY")
+  organicSessionsTarget   Int?
+  conversionsTarget       Float?
+  isActive                Boolean             @default(true)
+  brainSyncedAt           DateTime?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  topics                  Article[]
+  keywords                Keyword[]
+  monthlyMetrics          MonthlyMetric[]
+  imports                 DataImport[]
+  annotations             ProjectAnnotation[]
+
+  @@index([isActive])
+}
+
+model Keyword {
+  id             String         @id @default(cuid())
+  projectId      String
+  phrase         String
+  targetUrl      String?
+  location       String         @default("Singapore")
+  searchEngine   String         @default("Google.com.sg")
+  isActive       Boolean        @default(true)
+  source         DataSource     @default(MANUAL)
+  brainSourcePath String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rankings       RankingSnapshot[]
+
+  @@unique([projectId, phrase, location, searchEngine])
+  @@index([projectId, isActive])
+  @@index([phrase])
+}
+
+model RankingSnapshot {
+  id             String        @id @default(cuid())
+  keywordId      String
+  checkedAt      DateTime
+  position       Int?
+  beyondRange    Boolean       @default(false)
+  rankingUrl     String?
+  device         KeywordDevice @default(DESKTOP)
+  source         DataSource    @default(RANK_TRACKER)
+  importId       String?
+  createdAt      DateTime      @default(now())
+  keyword        Keyword       @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  import         DataImport?   @relation(fields: [importId], references: [id], onDelete: SetNull)
+
+  @@unique([keywordId, checkedAt, device, source])
+  @@index([keywordId, checkedAt])
+  @@index([checkedAt])
+}
+
+model MonthlyMetric {
+  id                 String      @id @default(cuid())
+  projectId          String
+  month              DateTime
+  organicSessions    Int?
+  conversions        Float?
+  gscClicks          Int?
+  gscImpressions     Int?
+  gscCtr             Float?
+  gscAveragePosition Float?
+  source             DataSource
+  sourceNote         String?
+  importId           String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  project            Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  import             DataImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, month, source])
+  @@index([projectId, month])
+  @@index([month])
+}
+
+model DataImport {
+  id           String       @id @default(cuid())
+  projectId    String?
+  importedById String?
+  type         ImportType
+  source       DataSource
+  status       ImportStatus @default(COMPLETED)
+  fileName     String?
+  rowsTotal    Int          @default(0)
+  rowsImported Int          @default(0)
+  rowsSkipped  Int          @default(0)
+  notes        String?
+  createdAt    DateTime     @default(now())
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  importedBy   User?        @relation(fields: [importedById], references: [id], onDelete: SetNull)
+  rankings     RankingSnapshot[]
+  metrics      MonthlyMetric[]
+
+  @@index([projectId, createdAt])
+  @@index([createdAt])
+}
+
+model ProjectAnnotation {
+  id          String   @id @default(cuid())
+  projectId   String
+  createdById String?
+  eventDate   DateTime
+  title       String
+  note        String?
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, eventDate])
 }
 
 model Article {

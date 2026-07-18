@@ -4,8 +4,8 @@ import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SEO Topic Tracker",
-  description: "Dashboard internal untuk tracking topic ideas, assignment writer, dan duplicate topic antar project SEO."
+  title: "SEO Portfolio Dashboard",
+  description: "Dashboard internal untuk memantau ranking, organic traffic, conversions, dan topic workflow lintas project SEO."
 };
 
 export default function RootLayout({
@@ -18,9 +18,14 @@ export default function RootLayout({
       <body>
         <div className="app-shell">
           <header className="topbar">
-            <Link href="/" className="brand">
-              SEO Topic Tracker
-            </Link>
+            <div className="topbar-inner">
+              <Link href="/" className="brand">SEO Portfolio</Link>
+              <nav className="main-nav" aria-label="Navigasi utama">
+                <Link href="/performance">Performance</Link>
+                <Link href="/dashboard">Topic Tracker</Link>
+                <Link href="/settings">Pengaturan</Link>
+              </nav>
+            </div>
           </header>
           <main className="page">{children}</main>
         </div>

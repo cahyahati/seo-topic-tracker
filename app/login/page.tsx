@@ -23,15 +23,15 @@ export default async function LoginPage({
   return (
     <div className="auth-wrap">
       <div className="card">
-        <h1>Login Admin</h1>
+        <h1>Masuk ke SEO Portfolio</h1>
         <p className="muted">
-          Masuk untuk mengelola artikel SEO, melihat ringkasan per status, dan export laporan CSV.
+          Gunakan username atau email yang diberikan admin.
         </p>
         {params.error ? <div className="error-box">{params.error}</div> : null}
         <form action={loginAction} className="form-grid">
           <div className="field">
-            <label htmlFor="email">Email</label>
-            <input className="input" id="email" name="email" type="email" required />
+            <label htmlFor="identity">Username atau email</label>
+            <input className="input" id="identity" name="identity" autoComplete="username" required />
           </div>
           <div className="field">
             <label htmlFor="password">Password</label>

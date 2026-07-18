@@ -13,3 +13,4 @@ prisma/dev.db-journal
 # Local Netlify folder
 .netlify
 cookies.txt
+data/okf-brain-snapshot.json

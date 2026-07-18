@@ -9,7 +9,7 @@ export default async function HomePage() {
   const [session, userCount] = await Promise.all([getSession(), db.user.count()]);
 
   if (session) {
-    redirect("/dashboard");
+    redirect("/performance");
   }
 
   if (userCount === 0) {

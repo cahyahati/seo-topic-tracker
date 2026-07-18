@@ -1,9 +1,16 @@
-# SEO Topic Tracker
+# SEO Portfolio Dashboard
 
-Dashboard internal untuk mengelola topic ideas lintas project SEO, melacak delegasi ke content writer, dan menandai topik yang mirip agar tidak terjadi penugasan ganda.
+Dashboard internal untuk memantau performa project SEO dan mengelola topic ideas lintas project.
 
 ## Fitur
 
+- Portfolio performance untuk ranking, organic sessions, conversions, MoM, dan YoY
+- Detail project dengan distribusi Top 3/10/20/100, keyword movement, target URL, lokasi, dan perangkat
+- Tambah atau ubah project dan keyword
+- Input manual serta import CSV/Excel untuk keyword, ranking, dan metrik bulanan
+- Sinkronisasi snapshot project, keyword mapping, dan ranking dari iClick SEO Brain
+- Data freshness, coverage, anotasi perubahan, dan riwayat import
+- Akun individual dengan role Admin, Editor, dan Viewer
 - Login admin dan setup akun admin pertama
 - Dashboard dengan summary total topic, belum didelegasikan, sedang dikerjakan, selesai, dan published
 - Status workflow: `Belum didelegasikan`, `Didelegasikan`, `Draft diterima`, `Selesai`, `Published`, `Dibatalkan`
@@ -55,6 +62,16 @@ npm run dev
 
 6. Buka `http://localhost:3000`, lalu buat akun admin pertama di halaman setup.
 
+## Snapshot OKF Brain
+
+Set `OKF_BRAIN_PATH` bila repo Brain tidak berada di lokasi default mesin ini, lalu jalankan:
+
+```bash
+npm run brain:export
+```
+
+Perintah tersebut memperbarui `data/okf-brain-snapshot.json`. Admin atau Editor kemudian dapat mengimpornya melalui halaman **Import & Sinkronisasi**.
+
 ## Deploy ke Vercel
 
 1. Push project ini ke Git repository.
@@ -63,5 +80,7 @@ npm run dev
    - `DATABASE_URL`
    - `AUTH_SECRET`
 4. Jalankan `prisma db push` terhadap database production Anda.
+
+Pada deployment production Netlify, `scripts/netlify-build.mjs` menjalankan `prisma db push` sebelum build dan berhenti jika `DATABASE_URL` tidak tersedia.
 
 Untuk database PostgreSQL, opsi yang paling praktis adalah Neon, Supabase, atau Railway.
