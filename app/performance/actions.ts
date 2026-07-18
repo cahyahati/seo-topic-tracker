@@ -256,20 +256,27 @@ export async function addProjectAnnotationAction(formData: FormData) {
   redirectMessage(`/performance/projects/${projectId}`, "success", "Anotasi berhasil ditambahkan.");
 }
 
-async function findOrCreateProject(name: string, domain = "") {
-  const normalizedDomain = normalizeProjectDomain(domain);
-  const domainCandidates = normalizedDomain
-    ? await db.project.findMany({
-        where: { domain: { contains: normalizedDomain, mode: "insensitive" } },
-        take: 10
-      })
-    : [];
-  const matchingDomain = domainCandidates.find(
-    (project) => normalizeProjectDomain(project.domain ?? "") === normalizedDomain
-  );
-  if (matchingDomain) return matchingDomain;
-  const existing = await db.project.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
-  return existing ?? db.project.create({ data: { name, domain: normalizedDomain ? `https://${normalizedDomain}/` : null } });
+async function loadProjectResolver() {
+  const projects = await db.project.findMany();
+  const byDomain = new Map<string, (typeof projects)[number]>();
+  const byName = new Map<string, (typeof projects)[number]>();
+  for (const project of projects) {
+    const host = normalizeProjectDomain(project.domain ?? "");
+    if (host && !byDomain.has(host)) byDomain.set(host, project);
+    byName.set(project.name.toLowerCase(), project);
+  }
+
+  return async function findOrCreateProject(name: string, domain = "") {
+    const normalizedDomain = normalizeProjectDomain(domain);
+    const existing = (normalizedDomain ? byDomain.get(normalizedDomain) : undefined) ?? byName.get(name.toLowerCase());
+    if (existing) return existing;
+    const created = await db.project.create({
+      data: { name, domain: normalizedDomain ? `https://${normalizedDomain}/` : null }
+    });
+    if (normalizedDomain) byDomain.set(normalizedDomain, created);
+    byName.set(created.name.toLowerCase(), created);
+    return created;
+  };
 }
 
 function keywordImportKey(phrase: string, location: string, searchEngine: string) {
@@ -313,7 +320,7 @@ export async function importPerformanceDataAction(formData: FormData) {
 
   let imported = 0;
   let skipped = 0;
-  const projectCache = new Map<string, Awaited<ReturnType<typeof findOrCreateProject>>>();
+  const findOrCreateProject = await loadProjectResolver();
   const resolvedRows: Array<{
     row: PerformanceImportRow;
     project: Awaited<ReturnType<typeof findOrCreateProject>>;
@@ -327,13 +334,7 @@ export async function importPerformanceDataAction(formData: FormData) {
       continue;
     }
 
-    const projectKey = projectDomain || projectName.toLowerCase();
-    let project = projectCache.get(projectKey);
-    if (!project) {
-      project = await findOrCreateProject(projectName, projectDomain);
-      projectCache.set(projectKey, project);
-    }
-
+    const project = await findOrCreateProject(projectName, projectDomain);
     resolvedRows.push({ row, project });
   }
 
@@ -421,7 +422,10 @@ export async function importPerformanceDataAction(formData: FormData) {
         rankingRowsByProject.set(project.id, group);
       }
 
-      for (const [projectId, projectRankings] of rankingRowsByProject) {
+      const projectResults = await Promise.all(
+        Array.from(rankingRowsByProject.entries()).map(async ([projectId, projectRankings]) => {
+        let projectImported = 0;
+        let projectSkipped = 0;
         const uniqueKeywordRows = Array.from(
           new Map(
             projectRankings.map((row) => [
@@ -465,7 +469,7 @@ export async function importPerformanceDataAction(formData: FormData) {
         for (const row of projectRankings) {
           const keywordId = keywordIds.get(keywordImportKey(row.phrase, row.location, row.searchEngine));
           if (!keywordId) {
-            skipped += 1;
+            projectSkipped += 1;
             continue;
           }
           snapshots.set(`${keywordId}|${row.checkedAt.toISOString()}|${row.device}`, {
@@ -502,8 +506,16 @@ export async function importPerformanceDataAction(formData: FormData) {
             }),
             db.rankingSnapshot.createMany({ data })
           ]);
-          imported += data.length;
+          projectImported += data.length;
         }
+
+        return { imported: projectImported, skipped: projectSkipped };
+        })
+      );
+
+      for (const result of projectResults) {
+        imported += result.imported;
+        skipped += result.skipped;
       }
     }
 

@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+// Import multi-sheet menyentuh banyak baris; beri waktu lebih dari default serverless.
+export const maxDuration = 60;
 
 export default async function PerformanceImportPage({
   searchParams
