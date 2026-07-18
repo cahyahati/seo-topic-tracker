@@ -8,12 +8,12 @@ import {
   UserRole
 } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { read, utils } from "xlsx";
 import { z } from "zod";
 
 import { hashPassword, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toMonthDate } from "@/lib/performance";
+import { normalizeProjectDomain, parseImportedRank, parsePerformanceWorkbook } from "@/lib/performance-import";
 
 function optionalText(value: FormDataEntryValue | null) {
   const text = typeof value === "string" ? value.trim() : "";
@@ -244,38 +244,27 @@ export async function addProjectAnnotationAction(formData: FormData) {
   redirectMessage(`/performance/projects/${projectId}`, "success", "Anotasi berhasil ditambahkan.");
 }
 
-function normalizeHeader(header: string) {
-  return header.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
-
-function parseRows(bytes: Uint8Array) {
-  const workbook = read(bytes, { type: "array", dense: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) return [];
-  return utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false }).map((row) =>
-    Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeHeader(key), String(value ?? "").trim()]))
+async function findOrCreateProject(name: string, domain = "") {
+  const normalizedDomain = normalizeProjectDomain(domain);
+  const domainCandidates = normalizedDomain
+    ? await db.project.findMany({
+        where: { domain: { contains: normalizedDomain, mode: "insensitive" } },
+        take: 10
+      })
+    : [];
+  const matchingDomain = domainCandidates.find(
+    (project) => normalizeProjectDomain(project.domain ?? "") === normalizedDomain
   );
-}
-
-async function findOrCreateProject(name: string) {
+  if (matchingDomain) return matchingDomain;
   const existing = await db.project.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
-  return existing ?? db.project.create({ data: { name } });
-}
-
-function parseRank(value: string) {
-  const text = value.trim();
-  if (!text || /^n\/?a$/i.test(text)) return { position: null, beyondRange: false };
-  if (/101\+|>\s*100/i.test(text)) return { position: null, beyondRange: true };
-  const position = Number(text.replace(/[^0-9.]/g, ""));
-  return Number.isFinite(position) && position > 0
-    ? { position: Math.round(position), beyondRange: false }
-    : { position: null, beyondRange: false };
+  return existing ?? db.project.create({ data: { name, domain: normalizedDomain ? `https://${normalizedDomain}/` : null } });
 }
 
 export async function importPerformanceDataAction(formData: FormData) {
   const user = await requireEditor();
   const file = formData.get("file");
   const type = String(formData.get("type") ?? "") as ImportType;
+  const checkedAtFallback = String(formData.get("checkedAt") ?? "").trim();
 
   if (!(file instanceof File) || !file.size) redirectMessage("/performance/import", "error", "Pilih file CSV atau Excel.");
   const allowedImportTypes: ImportType[] = [ImportType.KEYWORDS, ImportType.RANKINGS, ImportType.MONTHLY_METRICS];
@@ -283,7 +272,15 @@ export async function importPerformanceDataAction(formData: FormData) {
     redirectMessage("/performance/import", "error", "Jenis import tidak valid.");
   }
 
-  const rows = parseRows(new Uint8Array(await file.arrayBuffer()));
+  const parsedWorkbook = parsePerformanceWorkbook(new Uint8Array(await file.arrayBuffer()), checkedAtFallback);
+  if (
+    type === ImportType.RANKINGS &&
+    parsedWorkbook.format === "MONTHLY_RANKING_REPORT" &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(checkedAtFallback)
+  ) {
+    redirectMessage("/performance/import", "error", "Isi tanggal pengecekan untuk monthly ranking report.");
+  }
+  const rows = parsedWorkbook.rows;
   if (!rows.length) redirectMessage("/performance/import", "error", "File tidak berisi data.");
 
   const importLog = await db.dataImport.create({
@@ -299,15 +296,22 @@ export async function importPerformanceDataAction(formData: FormData) {
 
   let imported = 0;
   let skipped = 0;
+  const projectCache = new Map<string, Awaited<ReturnType<typeof findOrCreateProject>>>();
 
   for (const row of rows) {
     const projectName = String(row.project ?? row.project_name ?? "").trim();
+    const projectDomain = normalizeProjectDomain(String(row.project_domain ?? row.domain ?? ""));
     if (!projectName) {
       skipped += 1;
       continue;
     }
 
-    const project = await findOrCreateProject(projectName);
+    const projectKey = projectDomain || projectName.toLowerCase();
+    let project = projectCache.get(projectKey);
+    if (!project) {
+      project = await findOrCreateProject(projectName, projectDomain);
+      projectCache.set(projectKey, project);
+    }
 
     if (type === ImportType.KEYWORDS) {
       const phrase = String(row.keyword ?? row.phrase ?? "").trim();
@@ -340,12 +344,14 @@ export async function importPerformanceDataAction(formData: FormData) {
         update: {},
         create: { projectId: project.id, phrase, location, searchEngine, source: DataSource.IMPORT }
       });
-      const rank = parseRank(String(row.position ?? row.rank ?? ""));
+      const rank = parseImportedRank(String(row.position ?? row.rank ?? ""));
       const device = String(row.device ?? "DESKTOP").toUpperCase() === "MOBILE" ? KeywordDevice.MOBILE : KeywordDevice.DESKTOP;
+      const rankingUrlText = String(row.ranking_url ?? row.indexed_url ?? "").trim();
+      const rankingUrl = rankingUrlText && !/^n\/?a$/i.test(rankingUrlText) ? rankingUrlText : null;
       await db.rankingSnapshot.upsert({
         where: { keywordId_checkedAt_device_source: { keywordId: keyword.id, checkedAt, device, source: DataSource.IMPORT } },
-        update: { ...rank, rankingUrl: String(row.ranking_url ?? row.indexed_url ?? "").trim() || null, importId: importLog.id },
-        create: { keywordId: keyword.id, checkedAt, device, source: DataSource.IMPORT, rankingUrl: String(row.ranking_url ?? row.indexed_url ?? "").trim() || null, importId: importLog.id, ...rank }
+        update: { ...rank, rankingUrl, importId: importLog.id },
+        create: { keywordId: keyword.id, checkedAt, device, source: DataSource.IMPORT, rankingUrl, importId: importLog.id, ...rank }
       });
       imported += 1;
     }

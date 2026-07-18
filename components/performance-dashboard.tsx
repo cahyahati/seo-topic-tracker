@@ -285,6 +285,11 @@ export function PerformanceImportForm() {
         <label htmlFor="performance-import-file">CSV atau Excel</label>
         <input className="input file-input" id="performance-import-file" name="file" type="file" accept=".csv,.xlsx,.xls" required />
       </div>
+      <div className="field">
+        <label htmlFor="performance-import-date">Tanggal pengecekan ranking</label>
+        <input className="input" id="performance-import-date" name="checkedAt" type="date" />
+        <span className="muted">Wajib untuk monthly ranking report multi-sheet yang tidak memiliki kolom checked_at.</span>
+      </div>
       <button className="button" type="submit">Import data</button>
     </form>
   );
