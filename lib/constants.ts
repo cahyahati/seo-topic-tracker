@@ -1,12 +1,12 @@
 import { ArticleStatus, TopicContentType, TopicPriority } from "@prisma/client";
 
 export const STATUS_OPTIONS: Array<{ value: ArticleStatus; label: string }> = [
-  { value: ArticleStatus.NOT_ASSIGNED, label: "Belum didelegasikan" },
+  { value: ArticleStatus.NOT_ASSIGNED, label: "Belum Didelegasikan" },
   { value: ArticleStatus.ASSIGNED, label: "Didelegasikan" },
-  { value: ArticleStatus.DRAFT_RECEIVED, label: "Draft diterima" },
-  { value: ArticleStatus.COMPLETED, label: "Selesai" },
-  { value: ArticleStatus.PUBLISHED, label: "Published" },
-  { value: ArticleStatus.CANCELED, label: "Dibatalkan" }
+  { value: ArticleStatus.DRAFT_RECEIVED, label: "Draft Diterima" },
+  { value: ArticleStatus.PENDING_APPROVAL, label: "Pengajuan Approval" },
+  { value: ArticleStatus.APPROVED, label: "Disetujui" },
+  { value: ArticleStatus.PUBLISHED, label: "Published" }
 ];
 
 export const STATUS_LABELS = Object.fromEntries(

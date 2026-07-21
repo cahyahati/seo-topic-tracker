@@ -65,7 +65,8 @@ const topicSchema = z
     const assignedStatuses: ArticleStatus[] = [
       ArticleStatus.ASSIGNED,
       ArticleStatus.DRAFT_RECEIVED,
-      ArticleStatus.COMPLETED,
+      ArticleStatus.PENDING_APPROVAL,
+      ArticleStatus.APPROVED,
       ArticleStatus.PUBLISHED
     ];
 
@@ -106,7 +107,7 @@ function toTopicPayload(formData: FormData) {
 }
 
 function getDelegatedAtValue(status: ArticleStatus, delegatedAt: string | null) {
-  if (status === ArticleStatus.NOT_ASSIGNED || status === ArticleStatus.CANCELED) {
+  if (status === ArticleStatus.NOT_ASSIGNED) {
     return delegatedAt ? new Date(delegatedAt) : null;
   }
 

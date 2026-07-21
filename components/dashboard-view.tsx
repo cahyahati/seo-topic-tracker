@@ -31,15 +31,15 @@ export function StatCards({
     total: number;
     notAssigned: number;
     inProgress: number;
-    completed: number;
+    approved: number;
     published: number;
   };
 }) {
   const items = [
     { label: "Total Topic", value: stats.total },
-    { label: "Belum didelegasikan", value: stats.notAssigned },
+    { label: "Belum Didelegasikan", value: stats.notAssigned },
     { label: "Sedang dikerjakan", value: stats.inProgress },
-    { label: "Selesai", value: stats.completed },
+    { label: "Disetujui", value: stats.approved },
     { label: "Published", value: stats.published }
   ];
 

@@ -196,8 +196,8 @@ export default async function DashboardPage({
               <strong>{data.stats.inProgress}</strong>
             </div>
             <div className="summary-row">
-              <span>Selesai</span>
-              <strong>{data.stats.completed}</strong>
+              <span>Disetujui</span>
+              <strong>{data.stats.approved}</strong>
             </div>
             <div className="summary-row">
               <span>Published</span>

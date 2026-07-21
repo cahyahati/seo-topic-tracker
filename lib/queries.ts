@@ -112,14 +112,19 @@ function buildSummaryStats(topics: Array<{ status: ArticleStatus }>) {
     total: topics.length,
     notAssigned: 0,
     inProgress: 0,
-    completed: 0,
+    approved: 0,
     published: 0
   };
 
   for (const topic of topics) {
     if (topic.status === ArticleStatus.NOT_ASSIGNED) stats.notAssigned += 1;
-    if (topic.status === ArticleStatus.ASSIGNED || topic.status === ArticleStatus.DRAFT_RECEIVED) stats.inProgress += 1;
-    if (topic.status === ArticleStatus.COMPLETED) stats.completed += 1;
+    if (
+      topic.status === ArticleStatus.ASSIGNED ||
+      topic.status === ArticleStatus.DRAFT_RECEIVED ||
+      topic.status === ArticleStatus.PENDING_APPROVAL
+    )
+      stats.inProgress += 1;
+    if (topic.status === ArticleStatus.APPROVED) stats.approved += 1;
     if (topic.status === ArticleStatus.PUBLISHED) stats.published += 1;
   }
 

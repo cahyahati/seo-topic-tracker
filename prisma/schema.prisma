@@ -12,9 +12,9 @@ enum ArticleStatus {
   NOT_ASSIGNED
   ASSIGNED
   DRAFT_RECEIVED
-  COMPLETED
+  PENDING_APPROVAL
+  APPROVED
   PUBLISHED
-  CANCELED
 }
 
 enum TopicPriority {
